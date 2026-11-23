@@ -83,7 +83,7 @@ export function deviceAlerts(d, now) {
     add("warning", "batt", "Low battery", `${d.power.battery_pct}% (${d.power.battery_mv} mV)`);
   }
   if (d.network && d.network.rssi < THRESHOLDS.weakRssiDbm) {
-    add("info", "rssi", "Weak signal", `${d.network.rssi} dBm (${d.network.type})`);
+    add("info", "rssi", "Weak signal", `${d.network.rssi} dBm on ${d.network.type === "wifi" ? "Wi-Fi" : "cellular"} · data may arrive late`);
   }
   if (d.system && BAD_RESETS.has(d.system.reset_reason)) {
     add("warning", "reset", "Unexpected restart", `Last reset reason: ${d.system.reset_reason}`);

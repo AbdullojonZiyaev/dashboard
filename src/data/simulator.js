@@ -58,6 +58,47 @@ const SPECS = [
     gps: { lat: 25.244023, lon: 55.372881 },
     indoor: true,
   },
+  {
+    id: "esp32s3-1c2d3e4f5a6b",
+    offset: 10,
+    net: { type: "wifi", rssi: -66, ssid: "Warehouse-IoT", channel: 6, ip: "192.168.1.44" },
+    tsSource: "ntp",
+    power: "external",
+    reset: "power_on",
+    sensors: [{ id: "sht45-7B8C9D0E", ch: 0, base: 3.1 }],
+    door: { ratePerMin: 0.04 },
+    gps: { lat: 25.252901, lon: 55.364512 },
+  },
+  {
+    id: "esp32s3-6b5a4f3e2d1c",
+    offset: 30,
+    net: { type: "wifi", rssi: -74, ssid: "Warehouse-IoT", channel: 6, ip: "192.168.1.48" },
+    tsSource: "ntp",
+    power: "battery",
+    batteryStart: 27, // drains below the low-battery threshold during the replay
+    reset: "brownout",
+    sensors: [{ id: "sht45-2E3F4A5B", ch: 0, base: 3.6 }],
+    door: { ratePerMin: 0.03 },
+    gps: { lat: 25.253114, lon: 55.364203 },
+  },
+  {
+    id: "esp32s3-a9b8c7d6e5f4",
+    offset: 50,
+    net: { type: "cellular", rssi: -77, ip: "10.64.12.19" },
+    tsSource: "gps",
+    power: "battery",
+    batteryStart: 92,
+    reset: "power_on",
+    sensors: [
+      { id: "sht45-6C7D8E9F", ch: 0, base: 2.6 },
+      { id: "sht45-0A1B2C3D", ch: 1, base: 3.0 },
+    ],
+    door: { ratePerMin: 0.015 },
+    route: [
+      [25.248511, 55.368102],
+      [25.262305, 55.352617],
+    ],
+  },
 ];
 
 // Small seeded random generator so every run shows the same history.
@@ -242,7 +283,7 @@ export function createSimulator() {
         dev.door.count = 0;
         dev.door.totalOpen = 0;
       }
-      const battery = spec.power === "battery" ? Math.max(5, 64 - ((ts - t0) / 3600) * 3) : 78;
+      const battery = spec.power === "battery" ? Math.max(5, (spec.batteryStart ?? 64) - ((ts - t0) / 3600) * 3) : 78;
       msg.system = {
         fw: "1.0.3",
         chip: "ESP32-S3",
