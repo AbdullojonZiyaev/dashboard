@@ -1,21 +1,21 @@
-// What the "View" sidebar can switch on and off. Saved per browser in localStorage.
+// What the "Customize view" panel can switch on and off. Saved per browser in localStorage.
 
 export const VIEW_GROUPS = [
   {
     key: "sections",
-    title: "Sections",
+    title: "Home screen",
     items: [
-      ["kpis", "Summary tiles"],
-      ["units", "Units table"],
-      ["alerts", "Alerts"],
-      ["detail", "Unit details"],
+      ["tiles", "Summary tiles"],
+      ["journey", "Where meals are now"],
+      ["units", "Storage at a glance"],
     ],
   },
   {
     key: "columns",
-    title: "Table columns",
+    title: "Storage table columns",
     items: [
       ["status", "Status"],
+      ["carrying", "Meals inside"],
       ["temperature", "Temperature"],
       ["humidity", "Humidity"],
       ["door", "Door"],
@@ -42,10 +42,10 @@ export const VIEW_GROUPS = [
   },
   {
     key: "severities",
-    title: "Alert levels",
+    title: "Alert levels shown",
     items: [
-      ["critical", "Critical"],
-      ["warning", "Warning"],
+      ["critical", "Act now"],
+      ["warning", "Check soon"],
       ["info", "Info"],
     ],
   },
@@ -53,7 +53,7 @@ export const VIEW_GROUPS = [
     key: "kinds",
     title: "Unit types",
     items: [
-      ["Cart", "Carts"],
+      ["Cart", "Trolleys"],
       ["Truck", "Trucks"],
       ["Room", "Cold rooms"],
     ],

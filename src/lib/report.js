@@ -5,7 +5,7 @@
 import { LIMITS } from "../config.js";
 import { deviceInfo } from "../data/registry.js";
 import { sensorLabel } from "./alerts.js";
-import { SEVERITY, powerInfo, signalInfo, unitStatus } from "./describe.js";
+import { SEVERITY, powerInfo, resetText, signalInfo, unitStatus } from "./describe.js";
 import { fleetStats, deviceStats } from "./stats.js";
 import { fmtDuration, fmtTime } from "./format.js";
 import { fileStamp } from "./export.js";
@@ -15,15 +15,15 @@ const pdfText = (s) => String(s ?? "–").replace(/→/g, "->").replace(/−/g, 
 const num = (v, d = 1) => (Number.isFinite(v) ? v.toFixed(d) : "–");
 const dateTime = (ts) => new Date(ts * 1000).toLocaleString();
 
-const NAVY = [30, 58, 138];
-const SEV_COLOR = { critical: [220, 38, 38], warning: [217, 119, 6], info: [2, 132, 199] };
+const NAVY = [31, 94, 255]; // brand blue (DESIGN.md §3.2)
+const SEV_COLOR = { critical: [212, 47, 47], warning: [217, 142, 4], info: [91, 100, 114] };
 const LINE_COLORS = [
   [37, 99, 235],
   [13, 148, 136],
   [147, 51, 234],
 ];
 
-export async function downloadReport({ devices, alerts, stats, now, rangeS, rangeLabel, source }) {
+export async function downloadReport({ devices, alerts, stats, now, rangeS, rangeLabel, source, picture }) {
   const [{ jsPDF }, { autoTable }] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const W = doc.internal.pageSize.getWidth();
@@ -62,7 +62,7 @@ export async function downloadReport({ devices, alerts, stats, now, rangeS, rang
   // Title block
   doc.setFillColor(...NAVY).rect(0, 0, W, 26, "F");
   doc.setTextColor(255, 255, 255).setFont("helvetica", "bold").setFontSize(17);
-  doc.text("Cold-Chain Monitoring Report", M, 12);
+  doc.text("Meal Track & Trace: Food Safety Report", M, 12);
   doc.setFont("helvetica", "normal").setFontSize(9.5);
   doc.text(pdfText(`Airline Ready-Meal Track & Trace · generated ${dateTime(now)} · period: last ${rangeLabel} (${fmtTime(from)} to ${fmtTime(now)})`), M, 19);
   y = 34;
@@ -113,8 +113,9 @@ export async function downloadReport({ devices, alerts, stats, now, rangeS, rang
       didParseCell: (data) => {
         if (data.section === "body" && data.column.index === 2) {
           const v = data.cell.raw;
-          if (v === "Critical" || v === "Offline") data.cell.styles.textColor = SEV_COLOR.critical;
-          if (v === "Warning") data.cell.styles.textColor = SEV_COLOR.warning;
+          if (v === "Act now") data.cell.styles.textColor = SEV_COLOR.critical;
+          if (v === "No signal") data.cell.styles.textColor = SEV_COLOR.info;
+          if (v === "Check soon") data.cell.styles.textColor = SEV_COLOR.warning;
         }
       },
     },
@@ -127,8 +128,8 @@ export async function downloadReport({ devices, alerts, stats, now, rangeS, rang
     y += 9;
   } else {
     table(
-      ["Level", "Alert", "Unit", "Details", "Since"],
-      alerts.map((a) => [SEVERITY[a.severity].label, a.title, a.device, a.detail, a.since ? `${fmtTime(a.since)} (${fmtDuration(now - a.since)})` : ""]),
+      ["Level", "What happened", "Where", "What to do", "Since"],
+      alerts.map((a) => [SEVERITY[a.severity].label, a.sentence, a.place, a.steps.join("; ") || "-", a.since ? `${fmtTime(a.since)} (${fmtDuration(now - a.since)})` : ""]),
       {
         didParseCell: (data) => {
           if (data.section === "body" && data.column.index === 0) {
@@ -139,6 +140,35 @@ export async function downloadReport({ devices, alerts, stats, now, rangeS, rang
         },
       },
     );
+  }
+
+  // Flights
+  if (picture) {
+    heading("Flights");
+    table(
+      ["Flight", "To", "Departs", "Meals", "Packed", "Status", "Readiness"],
+      picture.flights.map((f) => [f.flight.no, f.flight.dest, fmtTime(f.flight.departs), f.meals, `${f.packed} of ${f.total}`, f.status.label, f.readiness]),
+      {
+        didParseCell: (data) => {
+          if (data.section === "body" && data.column.index === 5) {
+            const v = data.cell.raw;
+            if (v === "Act now") data.cell.styles.textColor = SEV_COLOR.critical;
+            if (v === "Check soon") data.cell.styles.textColor = SEV_COLOR.warning;
+          }
+        },
+      },
+    );
+    const attention = picture.list.filter((s) => !s.departed && s.problems.length);
+    heading("Meal batches that need attention");
+    if (attention.length === 0) {
+      doc.text("None.", M, y + 3);
+      y += 9;
+    } else {
+      table(
+        ["Batch", "Meal", "Meals", "Where", "Status", "What to do"],
+        attention.map((s) => [s.batch.code, s.batch.meal, s.batch.qty, s.place, s.status.label, s.problems.map((p) => `${p.text}: ${p.step}`).join("; ")]),
+      );
+    }
   }
 
   // Per-unit temperature charts
@@ -173,7 +203,7 @@ export async function downloadReport({ devices, alerts, stats, now, rangeS, rang
       deviceInfo(d.id).name,
       d.system?.fw,
       d.system?.uptime_s !== undefined ? fmtDuration(d.system.uptime_s) : "–",
-      d.system?.reset_reason,
+      d.system ? resetText(d.system.reset_reason) : "–",
       d.power ? `${d.power.battery_pct}% (${(d.power.battery_mv / 1000).toFixed(2)} V)` : "–",
       d.storage ? (d.storage.sd_present ? `${d.storage.sd_free_mb} MB free` : "MISSING") : "–",
       d.missing.size,
@@ -190,7 +220,7 @@ export async function downloadReport({ devices, alerts, stats, now, rangeS, rang
     doc.text(`Page ${i} of ${pages}`, W - M, H - 8, { align: "right" });
   }
 
-  doc.save(`cold-chain-report_${fileStamp(now)}.pdf`);
+  doc.save(`food-safety-report_${fileStamp(now)}.pdf`);
 }
 
 function drawChart(doc, d, from, now, x, y, w, h) {

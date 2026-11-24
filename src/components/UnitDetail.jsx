@@ -1,100 +1,122 @@
 import { useState } from "react";
-import { CartesianGrid, Line, LineChart, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { LIMITS } from "../config.js";
 import { deviceInfo } from "../data/registry.js";
 import { doorOpenPeriods } from "../data/store.js";
+import { batchesIn } from "../data/meals.js";
 import { sensorLabel } from "../lib/alerts.js";
-import { MSG_TIME_SOURCE, SIGNAL_HELP, powerInfo, unitStatus } from "../lib/describe.js";
-import { fmtAgo, fmtDuration, fmtNum, fmtTime, fmtTimeSec } from "../lib/format.js";
+import { MSG_TIME_SOURCE, SIGNAL_HELP, powerInfo, resetText } from "../lib/describe.js";
+import { fmtAgo, fmtDuration, fmtNum, fmtSpan, fmtTime, fmtTimeSec, fmtUntil } from "../lib/format.js";
 import { deviceStats } from "../lib/stats.js";
 import { VIEW_GROUPS } from "../lib/view.js";
-import { Battery, InfoTip, SeverityBadge, Signal, StatusBadge } from "./Badges.jsx";
+import { Battery, Code, InfoTip, Signal, StatusBadge, StatusIcon } from "./Badges.jsx";
+import { Segmented } from "./UI.jsx";
+import TempChart, { SERIES } from "./TempChart.jsx";
 
 export const RANGES = [
   { label: "1 h", s: 3600 },
   { label: "3 h", s: 3 * 3600 },
   { label: "12 h", s: 12 * 3600 },
 ];
-const SERIES = ["#2563eb", "#0d9488", "#9333ea", "#db2777"];
 const CATEGORY_LABELS = Object.fromEntries(VIEW_GROUPS.find((g) => g.key === "categories").items);
 
-export default function DeviceDetail({ device: d, devices, onSelect, alerts, allAlerts, now, range, onRange, categories }) {
+// Everything about one trolley, truck or room, by category. Shown in the side panel.
+export default function UnitDetail({ device: d, devices, onSelect, alerts, now, range, onRange, categories, initialTab = "all", ctx }) {
   const [sensorChoice, setSensorFilter] = useState("all");
-  const [tab, setTab] = useState("all");
-  const info = deviceInfo(d.id);
-  const status = unitStatus(d, allAlerts, now);
+  const [tab, setTab] = useState(initialTab);
   const from = now - range;
   const data = d.history.filter((p) => p.ts >= from);
   const allSensorIds = Object.keys(d.sensors);
   // A sensor chosen on another unit falls back to "all"
   const sensorFilter = sensorChoice in d.sensors ? sensorChoice : "all";
-  const sensorIds = (sensorFilter === "all" ? allSensorIds : [sensorFilter]).filter((id) =>
-    d.history.some((p) => p[`t:${id}`] !== undefined),
-  );
+  const sensorIds = (sensorFilter === "all" ? allSensorIds : [sensorFilter]).filter((id) => d.history.some((p) => p[`t:${id}`] !== undefined));
   const doorPeriods = d.door ? doorOpenPeriods(d, now).filter(([, end]) => end >= from) : [];
   const stats = deviceStats(d, from, now);
   const rangeLabel = RANGES.find((r) => r.s === range)?.label ?? "";
+  const inside = batchesIn(ctx.picture.list, d.id);
+  const series = (prefix) => sensorIds.map((id, i) => ({ key: `${prefix}${id}`, name: sensorLabel(d, id), color: SERIES[i % SERIES.length] }));
 
-  // Categories this unit can show (door only if a door sensor is fitted), filtered by the sidebar
+  // Categories this unit can show (door only if a door sensor is fitted), filtered in Customize view
   const available = Object.keys(CATEGORY_LABELS).filter((k) => categories[k] && (k !== "door" || d.door));
   const active = tab !== "all" && !available.includes(tab) ? "all" : tab;
   const show = (k) => available.includes(k) && (active === "all" || active === k);
 
   return (
-    <section className="card detail">
-      <div className="detail-head">
-        <div className="detail-pickers">
-          <label className="picker">
-            <span className="muted small">Unit</span>
-            <select value={d.id} onChange={(e) => onSelect(e.target.value)}>
-              {devices.map((x) => (
-                <option key={x.id} value={x.id}>
-                  {deviceInfo(x.id).name} — {deviceInfo(x.id).assignment}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="picker">
-            <span className="muted small">Sensor</span>
-            <select value={sensorFilter} onChange={(e) => setSensorFilter(e.target.value)}>
-              <option value="all">All sensors ({allSensorIds.length})</option>
-              {allSensorIds.map((id) => (
-                <option key={id} value={id}>
-                  {sensorLabel(d, id)} · {id}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="picker">
-            <span className="muted small">Period</span>
-            <div className="range">
-              {RANGES.map((r) => (
-                <button key={r.s} className={r.s === range ? "active" : ""} onClick={() => onRange(r.s)}>
-                  {r.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-        <div className="detail-title">
-          <h2>
-            {info.name} <StatusBadge status={status} />
-          </h2>
-          <p className="muted small">
-            {info.kind} · {info.assignment} · <code>{d.id}</code>
-          </p>
+    <div className="detail">
+      <div className="detail-pickers">
+        <label className="picker">
+          <span className="picker-label">Unit</span>
+          <select value={d.id} onChange={(e) => onSelect(e.target.value)}>
+            {devices.map((x) => (
+              <option key={x.id} value={x.id}>
+                {deviceInfo(x.id).name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="picker">
+          <span className="picker-label">Sensor</span>
+          <select value={sensorFilter} onChange={(e) => setSensorFilter(e.target.value)}>
+            <option value="all">All sensors ({allSensorIds.length})</option>
+            {allSensorIds.map((id) => (
+              <option key={id} value={id}>
+                {sensorLabel(d, id)} · {id}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="picker">
+          <span className="picker-label">Period</span>
+          <Segmented label="Period" options={RANGES.map((r) => [r.s, r.label])} value={range} onChange={onRange} />
         </div>
       </div>
 
       {alerts.length > 0 && (
-        <div className="detail-alerts">
-          {alerts.map((a) => (
-            <span key={a.id} className={`detail-alert alert-${a.severity}`}>
-              <SeverityBadge severity={a.severity} /> {a.title}
-            </span>
-          ))}
-        </div>
+        <section className={`card todo todo-${alerts.some((a) => a.severity === "critical") ? "critical" : "warning"}`}>
+          <h3>What to do</h3>
+          <ul>
+            {alerts
+              .filter((a) => a.severity !== "info")
+              .map((a) => (
+                <li key={a.id}>
+                  <StatusIcon status={a.severity} />
+                  <span>
+                    <strong>{a.sentence}.</strong> {a.steps[0] ? `${a.steps[0]}.` : ""}
+                  </span>
+                </li>
+              ))}
+            {alerts
+              .filter((a) => a.severity === "info")
+              .map((a) => (
+                <li key={a.id} className="muted">
+                  <StatusIcon status="info" />
+                  <span>{a.sentence}.</span>
+                </li>
+              ))}
+          </ul>
+        </section>
       )}
+
+      <section className="category">
+        <h3 className="category-title">Meals inside</h3>
+        {inside.length ? (
+          <ul className="inside">
+            {inside.map((s) => (
+              <li key={s.batch.code}>
+                <button className="row-link" onClick={() => ctx.go("find", s.batch.code)}>
+                  <StatusBadge status={s.status} />
+                  <span>
+                    {s.batch.meal} · {s.batch.qty} meals
+                  </span>
+                  <Code>{s.batch.code}</Code>
+                  <span className="muted small">{s.batch.flightNo ? `${s.batch.flightNo} · departs ${fmtUntil(s.batch.flightDeparts, now)}` : `missed ${s.batch.missedFlight}`}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted">No meals in this unit right now.</p>
+        )}
+      </section>
 
       <nav className="tabs" aria-label="Detail categories">
         <button className={active === "all" ? "active" : ""} onClick={() => setTab("all")}>
@@ -106,24 +128,15 @@ export default function DeviceDetail({ device: d, devices, onSelect, alerts, all
           </button>
         ))}
       </nav>
-      {available.length === 0 && <p className="muted">All detail categories are hidden. Turn some on in the View sidebar.</p>}
+      {available.length === 0 && <p className="muted">All detail categories are hidden. Turn some on in Settings → What the dashboard shows.</p>}
 
       {show("conditions") && (
         <Category title="Temperature & humidity">
           <div className="charts">
-            <Chart title="Temperature (°C)" data={data} from={from} now={now} sensorIds={sensorIds} prefix="t:" device={d} unit="°C" limits doorPeriods={doorPeriods} />
-            <Chart title="Humidity (%)" data={data} from={from} now={now} sensorIds={sensorIds} prefix="rh:" device={d} unit="%" doorPeriods={doorPeriods} />
+            <TempChart title="Temperature (°C)" data={data} series={series("t:")} from={from} to={now} limits doorPeriods={doorPeriods} />
+            <TempChart title="Humidity (%)" data={data} series={series("rh:")} from={from} to={now} unit="%" doorPeriods={doorPeriods} />
           </div>
-          <p className="muted small legend-note">
-            {sensorIds.length > 1 && "Each line is one sensor (multiplexer channel). "}
-            <span className="key key-limit" /> Limits {LIMITS.tempMinC}–{LIMITS.tempMaxC} °C (placeholder until the HACCP plan sets them).
-            {d.door && (
-              <>
-                {" "}
-                <span className="key key-door" /> Door open.
-              </>
-            )}
-          </p>
+          <p className="muted small">Humidity is relative humidity: how much water the air holds compared with the most it could hold at that temperature. The limits are placeholders until the HACCP plan sets them.</p>
         </Category>
       )}
 
@@ -133,23 +146,23 @@ export default function DeviceDetail({ device: d, devices, onSelect, alerts, all
             <Stat label="Lowest" value={fmtNum(stats.all?.min, 1, " °C")} />
             <Stat label="Average" value={fmtNum(stats.all?.avg, 1, " °C")} />
             <Stat label="Highest" value={fmtNum(stats.all?.max, 1, " °C")} tone={stats.all && stats.all.max > LIMITS.tempMaxC ? "bad" : ""} />
-            <Stat label="Time in range" value={stats.all ? `${stats.all.inRangePct.toFixed(1)}%` : "–"} tone={stats.all && stats.all.inRangePct < 99 ? "warn" : "good"} />
-            <Stat label="Excursions" value={stats.all?.excursions ?? "–"} tone={stats.all?.excursions ? "bad" : "good"} />
+            <Stat label="Time in range" value={stats.all ? `${stats.all.inRangePct.toFixed(1)}%` : "–"} tone={stats.all && stats.all.inRangePct < 99 ? "bad" : ""} />
+            <Stat label="Times it left the range" value={stats.all?.excursions ?? "–"} tone={stats.all?.excursions ? "bad" : ""} />
             {d.door && <Stat label="Door openings" value={stats.doorOpenings} />}
-            {d.door && <Stat label="Door open in total" value={fmtDuration(stats.doorOpenS)} />}
+            {d.door && <Stat label="Door open in total" value={fmtSpan(stats.doorOpenS)} />}
           </div>
           <div className="table-wrap">
-            <table className="mini">
+            <table className="dtable compact">
               <thead>
                 <tr>
                   <th>Sensor</th>
-                  <th>Min</th>
-                  <th>Avg</th>
-                  <th>Max</th>
-                  <th>In range</th>
-                  <th>Time out of range</th>
-                  <th>Humidity min / avg / max</th>
-                  <th>Readings</th>
+                  <th className="num">Lowest</th>
+                  <th className="num">Average</th>
+                  <th className="num">Highest</th>
+                  <th className="num">In range</th>
+                  <th className="num">Time outside</th>
+                  <th className="num">Humidity low / avg / high</th>
+                  <th className="num">Readings</th>
                 </tr>
               </thead>
               <tbody>
@@ -157,18 +170,16 @@ export default function DeviceDetail({ device: d, devices, onSelect, alerts, all
                   .filter((s) => sensorFilter === "all" || s.sensorId === sensorFilter)
                   .map((s) => (
                     <tr key={s.sensorId}>
-                      <td>
-                        {sensorLabel(d, s.sensorId)} <code className="muted">{s.sensorId}</code>
-                      </td>
-                      <td>{fmtNum(s.min, 1, " °C")}</td>
-                      <td>{fmtNum(s.avg, 1, " °C")}</td>
-                      <td className={s.max > LIMITS.tempMaxC ? "tone-bad" : ""}>{fmtNum(s.max, 1, " °C")}</td>
-                      <td>{s.inRangePct.toFixed(1)}%</td>
-                      <td>{s.outsideS ? fmtDuration(s.outsideS) : "none"}</td>
-                      <td>
+                      <td>{sensorLabel(d, s.sensorId)}</td>
+                      <td className="num">{fmtNum(s.min, 1, " °C")}</td>
+                      <td className="num">{fmtNum(s.avg, 1, " °C")}</td>
+                      <td className={`num ${s.max > LIMITS.tempMaxC ? "tone-bad" : ""}`}>{fmtNum(s.max, 1, " °C")}</td>
+                      <td className="num">{s.inRangePct.toFixed(1)}%</td>
+                      <td className="num">{s.outsideS ? fmtSpan(s.outsideS) : "none"}</td>
+                      <td className="num">
                         {fmtNum(s.rhMin, 0)} / {fmtNum(s.rhAvg, 0)} / {fmtNum(s.rhMax, 0, " %")}
                       </td>
-                      <td>{s.count}</td>
+                      <td className="num">{s.count}</td>
                     </tr>
                   ))}
               </tbody>
@@ -190,12 +201,12 @@ export default function DeviceDetail({ device: d, devices, onSelect, alerts, all
         {show("connectivity") && <NetworkCard d={d} now={now} />}
         {show("connectivity") && (
           <InfoCard
-            title="Storage (microSD)"
+            title="Memory card (microSD)"
             ts={d.storage?.ts}
             now={now}
             rows={
               d.storage && [
-                ["Card", d.storage.sd_present ? "Present" : <span className="tone-bad">Missing</span>],
+                ["Card", d.storage.sd_present ? "Fitted" : <span className="tone-bad">Missing</span>],
                 ["Free space", `${d.storage.sd_free_mb} of ${d.storage.sd_total_mb} MB (${Math.round((d.storage.sd_free_mb / d.storage.sd_total_mb) * 100)}%)`],
                 ["Waiting to send", `${d.storage.buffered_msgs} messages`],
                 ["Write errors", d.storage.write_errors],
@@ -206,7 +217,7 @@ export default function DeviceDetail({ device: d, devices, onSelect, alerts, all
         {show("system") && <SystemCard d={d} now={now} />}
         {show("quality") && <QualityCard d={d} now={now} />}
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -224,39 +235,6 @@ function Stat({ label, value, tone }) {
     <div className={`stat ${tone ? `stat-${tone}` : ""}`}>
       <div className="muted small">{label}</div>
       <div className="stat-value">{value}</div>
-    </div>
-  );
-}
-
-function Chart({ title, data, from, now, sensorIds, prefix, device, unit, limits, doorPeriods }) {
-  const values = data.flatMap((p) => sensorIds.map((id) => p[`${prefix}${id}`]).filter(Number.isFinite));
-  let domain = ["auto", "auto"];
-  if (limits && values.length) {
-    domain = [Math.floor(Math.min(...values, LIMITS.tempMinC) - 1), Math.ceil(Math.max(...values, LIMITS.tempMaxC) + 1)];
-  }
-  return (
-    <div className="chart">
-      <h4>{title}</h4>
-      <ResponsiveContainer width="100%" height={240}>
-        <LineChart data={data} margin={{ top: 8, right: 16, bottom: 0, left: -12 }}>
-          <CartesianGrid stroke="currentColor" strokeOpacity={0.12} />
-          <XAxis dataKey="ts" type="number" domain={[from, now]} allowDataOverflow tickFormatter={fmtTime} tick={{ fill: "currentColor", fontSize: 12 }} stroke="currentColor" strokeOpacity={0.4} />
-          <YAxis domain={domain} tick={{ fill: "currentColor", fontSize: 12 }} stroke="currentColor" strokeOpacity={0.4} />
-          {doorPeriods.map(([a, b]) => (
-            <ReferenceArea key={a} x1={Math.max(a, from)} x2={Math.min(b, now)} fill="#f59e0b" fillOpacity={0.18} ifOverflow="hidden" />
-          ))}
-          {limits && <ReferenceLine y={LIMITS.tempMaxC} stroke="#dc2626" strokeDasharray="5 4" />}
-          {limits && <ReferenceLine y={LIMITS.tempMinC} stroke="#dc2626" strokeDasharray="5 4" />}
-          <Tooltip
-            labelFormatter={(ts) => fmtTimeSec(ts)}
-            formatter={(v, name) => [`${v} ${unit}`, name]}
-            contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text)" }}
-          />
-          {sensorIds.map((id, i) => (
-            <Line key={id} dataKey={`${prefix}${id}`} name={sensorLabel(device, id)} stroke={SERIES[i % SERIES.length]} strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
-          ))}
-        </LineChart>
-      </ResponsiveContainer>
     </div>
   );
 }
@@ -294,10 +272,10 @@ function SensorsTable({ d, sensorFilter }) {
         <input type="search" className="search search-sm" placeholder="Search sensor ID or channel…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search sensors" />
       )}
       <div className="table-wrap">
-        <table className="mini">
+        <table className="dtable compact">
           <thead>
             <tr>
-              <th>Channel</th>
+              <th>Sensor</th>
               <th>Sensor ID</th>
               <th>Model</th>
               <th>Temperature</th>
@@ -312,9 +290,9 @@ function SensorsTable({ d, sensorFilter }) {
           <tbody>
             {rows.map(([id, s]) => (
               <tr key={id}>
-                <td>{s.ch !== undefined ? `${s.mux ?? ""} ch ${s.ch}` : "–"}</td>
+                <td>{sensorLabel(d, id)}</td>
                 <td>
-                  <code>{id}</code>
+                  <Code>{id}</Code>
                 </td>
                 <td>{s.model ?? "SHT45"}</td>
                 <td>{fmtNum(s.temp_c, 2, " °C")}</td>
@@ -403,7 +381,7 @@ function NetworkCard({ d, now }) {
       now={now}
       rows={
         n && [
-          ["Connection", n.type === "wifi" ? `Wi-Fi · ${n.ssid} (channel ${n.channel})` : "Cellular (4G)"],
+          ["Connection", n.type === "wifi" ? `Wi-Fi · ${n.ssid} (channel ${n.channel})` : "Mobile network (4G)"],
           ["Signal", <Signal key="s" rssi={n.rssi} />],
           ["IP address", n.ip],
           ["Clock sync (NTP)", n.ntp_synced ? `Synced ${fmtTime(n.last_ntp_sync)}` : <span className="tone-warn">Not synced</span>],
@@ -426,7 +404,7 @@ function SystemCard({ d, now }) {
           ["Firmware", s.fw],
           ["Chip", `${s.chip} rev ${s.chip_rev}`],
           ["Running for", s.uptime_s !== undefined ? fmtDuration(s.uptime_s) : "–"],
-          ["Restarts / last reason", `${s.boot_count} · ${s.reset_reason}`],
+          ["Restarts / last reason", `${s.boot_count} · ${resetText(s.reset_reason)}`],
           ["Free memory (lowest)", s.free_heap ? `${(s.free_heap / 1024).toFixed(0)} KB (${(s.min_free_heap / 1024).toFixed(0)} KB)` : "–"],
           ["Chip temperature", fmtNum(s.chip_temp_c, 1, " °C")],
           ["Sensor bus (I²C) errors", s.i2c_errors ?? "–"],

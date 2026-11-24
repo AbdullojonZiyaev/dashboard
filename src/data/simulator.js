@@ -4,16 +4,16 @@
 //   full message every 15 min (adds system, power, storage, network and the statistics fields)
 //   boot message on start-up (system info and the sensor serial-to-channel map)
 //
-// On start it replays the last 3 hours, then keeps producing data at SPEED× real time.
+// On start it replays the last 12 hours (so a meal's whole journey has data), then keeps producing data at SPEED× real time.
 // Built-in scenarios, relative to the moment the dashboard opens (T):
 //   Truck T-07: door left open from T-80 to T-65 min (a resolved excursion)
 //   Truck T-07: cooling fault on the rear sensor (ch 1) from T-12 min (a live excursion)
-//   Cart C-104: network outage from T-40 to T-25 min (messages buffered on SD, sent late)
-//   Cart C-104: two messages lost at T-100 min
+//   Trolley C-104: network outage from T-40 to T-25 min (messages buffered on SD, sent late)
+//   Trolley C-104: two messages lost at T-100 min
 
 const STEP_S = 60;
 const FULL_EVERY_S = 900;
-const HISTORY_S = 3 * 3600;
+const HISTORY_S = 12 * 3600;
 export const SPEED = 12; // default: 60 s of device time every 5 s of real time
 export const SPEED_OPTIONS = [0, 1, 12, 60, 300]; // 0 = paused
 
@@ -283,7 +283,7 @@ export function createSimulator() {
         dev.door.count = 0;
         dev.door.totalOpen = 0;
       }
-      const battery = spec.power === "battery" ? Math.max(5, (spec.batteryStart ?? 64) - ((ts - t0) / 3600) * 3) : 78;
+      const battery = spec.power === "battery" ? Math.min(100, Math.max(5, (spec.batteryStart ?? 64) - ((ts - (T - 3 * 3600)) / 3600) * 3)) : 78;
       msg.system = {
         fw: "1.0.3",
         chip: "ESP32-S3",

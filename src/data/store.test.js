@@ -72,9 +72,11 @@ describe("store", () => {
 describe("alerts", () => {
   it("reports an excursion with the time it started", () => {
     const s = run([tele(1, 1000, 4.0), tele(2, 1060, 5.6), tele(3, 1120, 6.1)]);
-    const a = deviceAlerts(s.devices[ID], 1130).find((x) => x.title === "Temperature excursion");
+    const a = deviceAlerts(s.devices[ID], 1130).find((x) => x.kind === "temp");
     expect(a.severity).toBe("critical");
     expect(a.since).toBe(1060);
+    expect(a.sentence).toBe("esp32s3-test is too warm (6.1 °C) for 1 min");
+    expect(a.steps.length).toBeGreaterThan(0);
   });
 
   it("reports a device as offline after three missed intervals", () => {

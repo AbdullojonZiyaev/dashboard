@@ -4,7 +4,7 @@
 import { LIMITS } from "../config.js";
 import { deviceInfo } from "../data/registry.js";
 import { sensorLabel } from "./alerts.js";
-import { SEVERITY, powerInfo, signalInfo, unitStatus } from "./describe.js";
+import { SEVERITY, powerInfo, resetText, signalInfo, unitStatus } from "./describe.js";
 import { deviceStats } from "./stats.js";
 
 const iso = (ts) => (ts ? new Date(ts * 1000) : null);
@@ -26,10 +26,10 @@ export function downloadBlob(blob, name) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export async function exportExcel({ devices, alerts, stats, now, rangeS, rangeLabel, source }) {
+export async function exportExcel({ devices, alerts, stats, now, rangeS, rangeLabel, source, picture }) {
   const { default: ExcelJS } = await import("exceljs");
   const wb = new ExcelJS.Workbook();
-  wb.creator = "Cold-Chain Dashboard";
+  wb.creator = "Meal Track & Trace dashboard";
   wb.created = new Date(now * 1000);
   const from = now - rangeS;
 
@@ -37,7 +37,7 @@ export async function exportExcel({ devices, alerts, stats, now, rangeS, rangeLa
     const ws = wb.addWorksheet(name, { views: [{ state: "frozen", ySplit: 1 }] });
     ws.columns = columns.map(([header, key, width, numFmt]) => ({ header, key, width: width ?? 16, style: numFmt ? { numFmt } : undefined }));
     ws.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
-    ws.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E3A8A" } };
+    ws.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F5EFF" } };
     rows.forEach((r) => ws.addRow(r));
     ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: columns.length } };
     return ws;
@@ -48,13 +48,15 @@ export async function exportExcel({ devices, alerts, stats, now, rangeS, rangeLa
   const summary = wb.addWorksheet("Summary");
   summary.columns = [{ width: 34 }, { width: 44 }];
   [
-    ["Cold-Chain Dashboard export"],
+    ["Meal Track & Trace export"],
     [],
     ["Generated", iso(now)],
     ["Data source", source],
     ["Statistics period", `last ${rangeLabel}`],
     ["Temperature limits", `${LIMITS.tempMinC} to ${LIMITS.tempMaxC} °C (placeholder until the HACCP plan sets them)`],
     ["Units", devices.length],
+    ["Meal batches on the ground", picture ? picture.list.filter((x) => !x.departed).length : "–"],
+    ["Flights in the list", picture ? picture.flights.length : "–"],
     ["Active alerts", alerts.length],
     ...Object.keys(SEVERITY).map((k) => [`  ${SEVERITY[k].label}`, alerts.filter((a) => a.severity === k).length]),
     ["Messages received", stats.received],
@@ -125,14 +127,47 @@ export async function exportExcel({ devices, alerts, stats, now, rangeS, rangeLa
   sheet(
     "Alerts",
     [
-      ["Level", "severity", 10],
-      ["Alert", "title", 26],
-      ["Unit", "device", 14],
-      ["Details", "detail", 50],
+      ["Level", "severity", 12],
+      ["Alert", "title", 22],
+      ["What happened", "sentence", 50],
+      ["Where", "place", 22],
+      ["Details", "detail", 44],
+      ["What to do", "steps", 60],
       ["Since", "since", 20, DATE],
     ],
-    alerts.map((a) => ({ severity: SEVERITY[a.severity].label, title: a.title, device: a.device, detail: a.detail, since: iso(a.since) })),
+    alerts.map((a) => ({ severity: SEVERITY[a.severity].label, title: a.title, sentence: a.sentence, place: a.place, detail: a.detail, steps: a.steps.join("; "), since: iso(a.since) })),
   );
+
+  if (picture) {
+    batchSheet(sheet, picture.list, now);
+    sheet(
+      "Flights",
+      [
+        ["Flight", "no", 9],
+        ["To", "dest", 12],
+        ["Departs", "dep", 20, DATE],
+        ["Stand", "stand", 7],
+        ["Trolley", "trolley", 14],
+        ["Truck", "truck", 11],
+        ["Meals", "meals", 8],
+        ["Batches packed", "packed", 14],
+        ["Status", "status", 12],
+        ["Readiness", "ready", 44],
+      ],
+      picture.flights.map((f) => ({
+        no: f.flight.no,
+        dest: f.flight.dest,
+        dep: iso(f.flight.departs),
+        stand: f.flight.stand,
+        trolley: deviceInfo(f.flight.trolley).name,
+        truck: deviceInfo(f.flight.truck).name,
+        meals: f.meals,
+        packed: `${f.packed} of ${f.total}`,
+        status: f.status.label,
+        ready: f.readiness,
+      })),
+    );
+  }
 
   // Readings (full history kept by the dashboard, one row per sensor reading)
   sheet(
@@ -152,6 +187,7 @@ export async function exportExcel({ devices, alerts, stats, now, rangeS, rangeLa
         Object.keys(d.sensors)
           .filter((id) => Number.isFinite(p[`t:${id}`]))
           .map((id) => {
+            // Sensor ID column keeps the hardware code for traceability
             const t = p[`t:${id}`];
             return { ts: iso(p.ts), unit: name, sensor: sensorLabel(d, id), sid: id, t, rh: p[`rh:${id}`], ok: t >= LIMITS.tempMinC && t <= LIMITS.tempMaxC ? "yes" : "NO" };
           }),
@@ -178,7 +214,7 @@ export async function exportExcel({ devices, alerts, stats, now, rangeS, rangeLa
       ["Firmware", "fw", 10],
       ["Uptime (h)", "up", 11, "0.0"],
       ["Restarts", "boots", 9],
-      ["Last reset reason", "reset", 16],
+      ["Last reset reason", "reset", 30],
       ["Free memory (KB)", "heap", 15],
       ["Chip temp (°C)", "chip", 13],
       ["I²C errors", "i2c", 10],
@@ -199,7 +235,7 @@ export async function exportExcel({ devices, alerts, stats, now, rangeS, rangeLa
       fw: d.system?.fw,
       up: d.system?.uptime_s !== undefined ? d.system.uptime_s / 3600 : undefined,
       boots: d.system?.boot_count,
-      reset: d.system?.reset_reason,
+      reset: d.system ? resetText(d.system.reset_reason) : undefined,
       heap: d.system?.free_heap ? Math.round(d.system.free_heap / 1024) : undefined,
       chip: d.system?.chip_temp_c,
       i2c: d.system?.i2c_errors,
@@ -218,5 +254,58 @@ export async function exportExcel({ devices, alerts, stats, now, rangeS, rangeLa
   );
 
   const buf = await wb.xlsx.writeBuffer();
-  downloadBlob(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `cold-chain-export_${fileStamp(now)}.xlsx`);
+  downloadBlob(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `meal-track-trace_${fileStamp(now)}.xlsx`);
+}
+
+function batchSheet(sheet, states, now) {
+  const DATE = "yyyy-mm-dd hh:mm:ss";
+  sheet(
+    "Batches",
+    [
+      ["Batch", "code", 14],
+      ["Meal", "meal", 24],
+      ["Meals", "qty", 8],
+      ["Status", "status", 12],
+      ["Where now", "place", 26],
+      ["Temperature now (°C)", "temp", 18, "0.0"],
+      ["Flight", "flight", 9],
+      ["Departs", "dep", 20, DATE],
+      ["Produced", "produced", 20, DATE],
+      ["Expires", "expires", 20, DATE],
+      ["Hours left", "left", 11, "0.0"],
+      ["What to do", "todo", 60],
+    ],
+    states.map((s) => ({
+      code: s.batch.code,
+      meal: s.batch.meal,
+      qty: s.batch.qty,
+      status: s.status.label,
+      place: s.place,
+      temp: s.temp ?? undefined,
+      flight: s.batch.flightNo ?? `missed ${s.batch.missedFlight}`,
+      dep: iso(s.batch.flightDeparts),
+      produced: iso(s.batch.producedAt),
+      expires: iso(s.batch.expiresAt),
+      left: (s.batch.expiresAt - now) / 3600,
+      todo: s.problems.map((p) => `${p.text}: ${p.step}`).join("; "),
+    })),
+  );
+}
+
+// Export of a list of batches only (Batches screen: whole list or the selected rows)
+export async function exportBatches({ states, now, label }) {
+  const { default: ExcelJS } = await import("exceljs");
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Meal Track & Trace dashboard";
+  const sheet = (name, columns, rows) => {
+    const ws = wb.addWorksheet(name, { views: [{ state: "frozen", ySplit: 1 }] });
+    ws.columns = columns.map(([header, key, width, numFmt]) => ({ header, key, width: width ?? 16, style: numFmt ? { numFmt } : undefined }));
+    ws.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+    ws.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F5EFF" } };
+    rows.forEach((r) => ws.addRow(r));
+    ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: columns.length } };
+  };
+  batchSheet(sheet, states, now);
+  const buf = await wb.xlsx.writeBuffer();
+  downloadBlob(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `${label}_${fileStamp(now)}.xlsx`);
 }

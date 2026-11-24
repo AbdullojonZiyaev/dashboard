@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
+import { X } from "lucide-react";
 import { localAnswer } from "../lib/assistant.js";
 
-const SUGGESTIONS = ["Give me a summary", "What needs attention now?", "Any temperature excursions?", "Which battery is lowest?", "What does dBm mean?"];
+const SUGGESTIONS = ["What needs attention now?", "Which flights are not ready?", "Which meals expire soon?", "Give me a summary", "What does dBm mean?"];
 
 // mode: "unknown" until the first answer, then "claude" or "offline"
 export default function ChatPanel({ open, onClose, getSnapshot }) {
   const [messages, setMessages] = useState([
-    { role: "assistant", content: "Hi! Ask me about the units, alerts, temperatures, doors, batteries or signal. I read the live dashboard data." },
+    { role: "assistant", content: "Hi! Ask me about meals, flights, alerts, temperatures, doors, batteries or signal. I read the live dashboard data." },
   ]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -18,8 +19,12 @@ export default function ChatPanel({ open, onClose, getSnapshot }) {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [messages]);
   useEffect(() => {
-    if (open) inputRef.current?.focus();
-  }, [open]);
+    if (!open) return;
+    inputRef.current?.focus();
+    const key = (e) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [open, onClose]);
 
   const appendToLast = (text) =>
     setMessages((m) => {
@@ -69,7 +74,7 @@ export default function ChatPanel({ open, onClose, getSnapshot }) {
   }
 
   return (
-    <aside className={`chat ${open ? "open" : ""}`} aria-label="Dashboard assistant" aria-hidden={!open}>
+    <aside className={`chat ${open ? "open" : ""}`} aria-label="Dashboard assistant" aria-hidden={!open} inert={!open}>
       <div className="chat-head">
         <div>
           <h2>Assistant</h2>
@@ -77,8 +82,8 @@ export default function ChatPanel({ open, onClose, getSnapshot }) {
             {mode === "claude" ? "Answers by Claude from the live data" : mode === "offline" ? "Offline answers (no Claude API key set)" : "Reads the live dashboard data"}
           </p>
         </div>
-        <button className="btn btn-ghost" onClick={onClose} aria-label="Close assistant">
-          ✕
+        <button className="btn btn-quiet btn-icon" onClick={onClose} aria-label="Close assistant">
+          <X size={20} />
         </button>
       </div>
       <div className="chat-list" ref={listRef}>
