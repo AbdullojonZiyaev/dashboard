@@ -1,6 +1,7 @@
 // Statistical process control (SPC) for the temperature control chart.
 //
-// USL / LSL: the fixed food-safety limits (config.js LIMITS), not calculated.
+// USL / LSL: fixed limits, not calculated. The food-safety limits (config.js LIMITS) for the
+// simulated fridge data; set on the Control chart page for the live backend sensor.
 // UCL / CL / LCL: calculated from the sensor's own readings.
 //
 // PLACEHOLDER FORMULA: until the QA team sends theirs, the limits use the standard
@@ -123,10 +124,10 @@ export function evaluate(points, limits, { usl, lsl } = spec()) {
 
 // Everything the chart needs for one sensor. rangeS = Infinity means all time; the limits
 // then come from all the data, otherwise from the last 12 h (or the period, if longer).
-export function controlChart(device, sensorId, now, rangeS, sampleS) {
+export function controlChart(device, sensorId, now, rangeS, sampleS, specLimits = spec()) {
   const key = `t:${sensorId}`;
   const baseline = sampleSeries(device.history, key, now - Math.max(SPC.baselineS, rangeS), now, sampleS);
   const limits = controlLimits(baseline.map((p) => p.v));
   const shown = sampleSeries(device.history, key, now - rangeS, now, sampleS);
-  return { limits, spec: spec(), baselineFrom: baseline[0]?.ts ?? null, ...evaluate(shown, limits) };
+  return { limits, spec: specLimits, baselineFrom: baseline[0]?.ts ?? null, ...evaluate(shown, limits, specLimits) };
 }

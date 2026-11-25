@@ -2495,3 +2495,21 @@ kbd {
   font-family: var(--mono);
   font-size: 12.5px;
 }
+.spec-edit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 22px;
+  font-weight: 700;
+}
+.spec-edit input {
+  width: 4.5em;
+  min-height: var(--target);
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  font-size: 20px;
+}

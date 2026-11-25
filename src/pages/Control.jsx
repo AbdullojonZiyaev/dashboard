@@ -3,8 +3,9 @@ import { sensorLabel } from "../lib/alerts.js";
 import { STATUS } from "../lib/describe.js";
 import { fmtDateTime, fmtNum, fmtSpan, fmtTime } from "../lib/format.js";
 import { setParams } from "../lib/router.js";
-import { BACKEND, BACKEND_SENSOR, useBackendHistory } from "../lib/backend.js";
-import { SAMPLE_OPTIONS, SPC, controlChart } from "../lib/spc.js";
+import { useState } from "react";
+import { BACKEND, BACKEND_SENSOR, LIVE_SPEC_DEFAULT, useBackendHistory, useLiveSpec } from "../lib/backend.js";
+import { SAMPLE_OPTIONS, SPC, controlChart, spec } from "../lib/spc.js";
 import { Code, StatusBadge, StatusIcon } from "../components/Badges.jsx";
 import ControlChart from "../components/ControlChart.jsx";
 import DataTable from "../components/DataTable.jsx";
@@ -41,6 +42,8 @@ export default function Control({ ctx }) {
   const rangeKey = PERIODS.some(([k]) => k === p.range) ? p.range : defaultRange;
   const rangeS = rangeKey === "all" ? Infinity : Number(rangeKey);
   const backend = useBackendHistory(source === "current", Math.max(SPC.baselineS, rangeS));
+  const [liveSpec, setLiveSpec] = useLiveSpec();
+  const specLimits = source === "current" ? liveSpec : spec();
   const sampleS = Number(p.every) || SAMPLE_OPTIONS[1].s;
   // The backend stamps readings with the real time; the simulation has its own clock
   const now = source === "current" ? Date.now() / 1000 : ctx.now;
@@ -87,7 +90,7 @@ export default function Control({ ctx }) {
   if (source === "best" && !ctx.ready) return <Skeleton tiles={4} rows={8} />;
 
   const units = source === "current" ? backendUnits(backend.devices) : simulatedUnits(ctx);
-  const all = units.flatMap((u) => u.sensors.map((sn) => ({ u, sn, key: `${u.id}|${sn.id}`, cc: controlChart(u.device, sn.id, now, rangeS, sampleS) })));
+  const all = units.flatMap((u) => u.sensors.map((sn) => ({ u, sn, key: `${u.id}|${sn.id}`, cc: controlChart(u.device, sn.id, now, rangeS, sampleS, specLimits) })));
   if (!all.length) {
     return (
       <div className="page control">
@@ -184,13 +187,17 @@ export default function Control({ ctx }) {
           <span className="stat-value stat-big">{cc.limits ? `${cc.limits.lcl.toFixed(1)} – ${cc.limits.ucl.toFixed(1)}°C` : "–"}</span>
           <span className="muted small">calculated from sensor data</span>
         </div>
-        <div className="stat">
-          <span className="stat-label">Specification limits (LSL – USL)</span>
-          <span className="stat-value stat-big">
-            {cc.spec.lsl.toFixed(1)} – {cc.spec.usl.toFixed(1)}°C
-          </span>
-          <span className="muted small">fixed food-safety requirement</span>
-        </div>
+        {source === "current" ? (
+          <SpecEditor value={liveSpec} onChange={setLiveSpec} />
+        ) : (
+          <div className="stat">
+            <span className="stat-label">Specification limits (LSL – USL)</span>
+            <span className="stat-value stat-big">
+              {cc.spec.lsl.toFixed(1)} – {cc.spec.usl.toFixed(1)}°C
+            </span>
+            <span className="muted small">fixed food-safety requirement</span>
+          </div>
+        )}
       </div>
 
       {source === "current" && (
@@ -231,7 +238,11 @@ export default function Control({ ctx }) {
           <dl className="facts facts-tight">
             <div>
               <dt>USL / LSL</dt>
-              <dd>Fixed food-safety limits ({cc.spec.lsl}–{cc.spec.usl} °C). Change them in the safety-limit settings.</dd>
+              <dd>
+                {source === "current"
+                  ? `Set on this page for the live sensor: ${cc.spec.lsl}–${cc.spec.usl} °C. Not calculated.`
+                  : `Fixed food-safety limits (${cc.spec.lsl}–${cc.spec.usl} °C). Change them in the safety-limit settings.`}
+              </dd>
             </div>
             <div>
               <dt>CL</dt>
@@ -273,6 +284,42 @@ export default function Control({ ctx }) {
           rowClass={(x) => `row-${x.cc.status}`}
         />
       </section>
+    </div>
+  );
+}
+
+// USL / LSL for the live sensor: typed in, applied when both are numbers and LSL < USL
+function SpecEditor({ value, onChange }) {
+  const [draft, setDraft] = useState({ lsl: String(value.lsl), usl: String(value.usl) });
+  const lsl = Number.parseFloat(draft.lsl);
+  const usl = Number.parseFloat(draft.usl);
+  const valid = Number.isFinite(lsl) && Number.isFinite(usl) && lsl < usl;
+  const edit = (k) => (e) => {
+    const next = { ...draft, [k]: e.target.value };
+    setDraft(next);
+    const l = Number.parseFloat(next.lsl);
+    const u = Number.parseFloat(next.usl);
+    if (Number.isFinite(l) && Number.isFinite(u) && l < u) onChange({ lsl: l, usl: u });
+  };
+  const reset = () => {
+    setDraft({ lsl: String(LIVE_SPEC_DEFAULT.lsl), usl: String(LIVE_SPEC_DEFAULT.usl) });
+    onChange(LIVE_SPEC_DEFAULT);
+  };
+  return (
+    <div className={`stat ${valid ? "" : "stat-bad"}`}>
+      <span className="stat-label">Specification limits (LSL – USL)</span>
+      <span className="spec-edit">
+        <input type="number" step="0.5" inputMode="decimal" aria-label="LSL in °C" value={draft.lsl} onChange={edit("lsl")} />
+        <span>–</span>
+        <input type="number" step="0.5" inputMode="decimal" aria-label="USL in °C" value={draft.usl} onChange={edit("usl")} />
+        <span>°C</span>
+      </span>
+      <span className="muted small">
+        {valid ? "set for the live sensor · " : "LSL must be lower than USL · "}
+        <button className="link" onClick={reset}>
+          Reset to {LIVE_SPEC_DEFAULT.lsl}–{LIVE_SPEC_DEFAULT.usl} °C
+        </button>
+      </span>
     </div>
   );
 }

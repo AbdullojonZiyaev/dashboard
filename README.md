@@ -81,7 +81,7 @@ offline answers until the FastAPI backend provides `/api/chat`.
 
 ## Control chart limits (`src/lib/spc.js`)
 
-USL and LSL are the fixed safety limits in `src/config.js`. UCL, CL and LCL are calculated from the
+USL and LSL are fixed, not calculated: the food-safety limits in `src/config.js` (0–5 °C) for the simulated data, and for the live backend sensor a range set on the Control chart page (default 20–25 °C, since the test sensor is at room temperature; saved in the browser, also used to highlight readings on the Sensor readings page). UCL, CL and LCL are calculated from the
 last 12 h of each sensor's readings (one per chosen interval), or from all of them when the period is **All time**. Until the QA team provides its formula they use the
 standard individuals (I-MR) chart: CL = mean, UCL/LCL = CL ± 3 × MR̄ / 1.128, where MR̄ is the average difference
 between consecutive readings. To use another formula, change `controlLimits()` only.

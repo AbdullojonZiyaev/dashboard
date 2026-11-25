@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { deviceInfo } from "../data/registry.js";
-import { BACKEND, useBackendReadings } from "../lib/backend.js";
+import { BACKEND, useBackendReadings, useLiveSpec } from "../lib/backend.js";
 import { outOfRange } from "../lib/alerts.js";
 import { fmtDateTime, fmtNum, fmtTimeSec, plural } from "../lib/format.js";
 import { setParams } from "../lib/router.js";
@@ -89,6 +89,7 @@ function CurrentView({ ctx }) {
   const { route, now } = ctx;
   const p = route.params;
   const backend = useBackendReadings(true);
+  const [liveSpec] = useLiveSpec();
   const live = backend.status === "live";
   const simulated = useMemo(() => asCurrentFormat(ctx.rawMessages), [ctx.rawMessages]);
   const all = live
@@ -111,7 +112,7 @@ function CurrentView({ ctx }) {
       sort: (r) => r.received,
     },
     { key: "device", label: "device", render: (r) => <Code>{r.device}</Code>, sort: (r) => r.device },
-    { key: "t", label: "temperature", align: "right", render: (r) => <span className={outOfRange(r.temperature) ? "tone-bad strong" : ""}>{fmtNum(r.temperature, 2, " °C")}</span>, sort: (r) => r.temperature },
+    { key: "t", label: "temperature", align: "right", render: (r) => <span className={(live ? r.temperature < liveSpec.lsl || r.temperature > liveSpec.usl : outOfRange(r.temperature)) ? "tone-bad strong" : ""}>{fmtNum(r.temperature, 2, " °C")}</span>, sort: (r) => r.temperature },
     { key: "rh", label: "humidity", align: "right", render: (r) => fmtNum(r.humidity, 1, " %"), sort: (r) => r.humidity },
     { key: "source", label: "source", render: (r) => r.source },
   ];

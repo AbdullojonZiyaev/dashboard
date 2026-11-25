@@ -3,6 +3,7 @@
 // setup is needed. Set VITE_BACKEND_URL to call the API somewhere else.
 
 import { useEffect, useState } from "react";
+import { usePref } from "./prefs.js";
 
 export const BACKEND = import.meta.env.VITE_BACKEND_URL || "/backend";
 const POLL_MS = 10_000;
@@ -90,3 +91,9 @@ export function useBackendHistory(enabled, windowS) {
   }, [enabled, windowS]);
   return state;
 }
+
+// USL / LSL for the live backend sensor. The current test sensor is not in a fridge, so the
+// food-safety limits (0–5 °C) don't apply; these default to a room-temperature range and
+// can be changed on the Control chart page (saved in this browser).
+export const LIVE_SPEC_DEFAULT = { lsl: 20, usl: 25 };
+export const useLiveSpec = () => usePref("liveSpec", LIVE_SPEC_DEFAULT);
