@@ -26,6 +26,7 @@ export const SAMPLE_OPTIONS = [
   { label: "1 min", s: 60 },
   { label: "5 min", s: 300 },
   { label: "15 min", s: 900 },
+  { label: "1 h", s: 3600 },
 ];
 
 export const spec = () => ({ usl: LIMITS.tempMaxC, lsl: LIMITS.tempMinC });
@@ -120,10 +121,11 @@ export function evaluate(points, limits, { usl, lsl } = spec()) {
   return { points: out, events: events.reverse(), status };
 }
 
-// Everything the chart needs for one sensor
+// Everything the chart needs for one sensor. rangeS = Infinity means all time; the limits
+// then come from all the data, otherwise from the last 12 h (or the period, if longer).
 export function controlChart(device, sensorId, now, rangeS, sampleS) {
   const key = `t:${sensorId}`;
-  const baseline = sampleSeries(device.history, key, now - SPC.baselineS, now, sampleS);
+  const baseline = sampleSeries(device.history, key, now - Math.max(SPC.baselineS, rangeS), now, sampleS);
   const limits = controlLimits(baseline.map((p) => p.v));
   const shown = sampleSeries(device.history, key, now - rangeS, now, sampleS);
   return { limits, spec: spec(), baselineFrom: baseline[0]?.ts ?? null, ...evaluate(shown, limits) };

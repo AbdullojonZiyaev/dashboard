@@ -14,6 +14,7 @@ import { EmptyState, Segmented, Skeleton } from "../components/UI.jsx";
 const RANK = { critical: 0, warning: 1, offline: 2, ok: 3 };
 const sensorsOf = (d) => Object.keys(d.sensors).filter((id) => d.history.some((p) => p[`t:${id}`] !== undefined));
 
+const PERIODS = [...RANGES.map((r) => [String(r.s), r.label]), ["all", "All time"]];
 const SOURCES = [
   ["current", "Current backend (live)"],
   ["best", "Best case (simulated)"],
@@ -34,9 +35,12 @@ export default function Control({ ctx }) {
   const { route } = ctx;
   const p = route.params;
   const source = p.src === "best" ? "best" : "current";
-  const backend = useBackendHistory(source === "current", SPC.baselineS);
   const set = (patch) => setParams(route, patch);
-  const rangeS = Number(p.range) || RANGES[0].s;
+  // Live data is often sparse, so it opens on "All time"; the simulation on 1 h
+  const defaultRange = source === "current" ? "all" : String(RANGES[0].s);
+  const rangeKey = PERIODS.some(([k]) => k === p.range) ? p.range : defaultRange;
+  const rangeS = rangeKey === "all" ? Infinity : Number(rangeKey);
+  const backend = useBackendHistory(source === "current", Math.max(SPC.baselineS, rangeS));
   const sampleS = Number(p.every) || SAMPLE_OPTIONS[1].s;
   // The backend stamps readings with the real time; the simulation has its own clock
   const now = source === "current" ? Date.now() / 1000 : ctx.now;
@@ -44,7 +48,13 @@ export default function Control({ ctx }) {
   const sourcePicker = (
     <div className="picker">
       <span className="picker-label">Data</span>
-      <Segmented label="Data source" options={SOURCES} value={source} onChange={(v) => set({ src: v === "current" ? null : v, unit: null, sensor: null })} />
+      <Segmented label="Data source" options={SOURCES} value={source} onChange={(v) => set({ src: v === "current" ? null : v, unit: null, sensor: null, range: null })} />
+    </div>
+  );
+  const periodPicker = (
+    <div className="picker">
+      <span className="picker-label">Period</span>
+      <Segmented label="Period" options={PERIODS} value={rangeKey} onChange={(v) => set({ range: v === defaultRange ? null : v })} />
     </div>
   );
   const head = (sub) => (
@@ -82,10 +92,13 @@ export default function Control({ ctx }) {
     return (
       <div className="page control">
         {head(null)}
-        <div className="detail-pickers">{sourcePicker}</div>
+        <div className="detail-pickers">
+          {sourcePicker}
+          {periodPicker}
+        </div>
         <EmptyState>
           {source === "current"
-            ? "The backend is running but has no readings from the last 12 hours. Readings appear here as soon as a sensor posts to /api/readings."
+            ? "The backend is running but has no readings in this period. Choose All time, or wait for a sensor to post to /api/readings."
             : "No sensor has sent temperature readings yet."}
         </EmptyState>
       </div>
@@ -95,6 +108,12 @@ export default function Control({ ctx }) {
   const sel = all.find((x) => x.u.id === p.unit && x.sn.id === p.sensor) ?? all.find((x) => x.u.id === p.unit) ?? worst;
   const { u, sn, cc } = sel;
   const last = cc.points[cc.points.length - 1];
+  // All time: the axis fits the data (live data may be days old); otherwise it ends now
+  const first = cc.points[0];
+  const chartTo = Number.isFinite(rangeS) ? now : (last?.ts ?? now);
+  const chartFrom = Number.isFinite(rangeS) ? now - rangeS : Math.min(first?.ts ?? chartTo - 3600, chartTo - 600);
+  // Times older than today get their date
+  const when = (ts) => (now - ts > 20 * 3600 ? fmtDateTime(ts) : fmtTime(ts));
   const status = STATUS[cc.status];
 
   const columns = [
@@ -142,10 +161,7 @@ export default function Control({ ctx }) {
             ))}
           </select>
         </label>
-        <div className="picker">
-          <span className="picker-label">Period</span>
-          <Segmented label="Period" options={RANGES.map((r) => [r.s, r.label])} value={rangeS} onChange={(v) => set({ range: v === RANGES[0].s ? null : v })} />
-        </div>
+        {periodPicker}
         <div className="picker">
           <span className="picker-label">One reading every</span>
           <Segmented label="Reading interval" options={SAMPLE_OPTIONS.map((o) => [o.s, o.label])} value={sampleS} onChange={(v) => set({ every: v === SAMPLE_OPTIONS[1].s ? null : v })} />
@@ -154,9 +170,9 @@ export default function Control({ ctx }) {
 
       <div className="stats-row">
         <div className={`stat ${last && last.flags.includes("spec") ? "stat-bad" : last?.flags.length ? "stat-warn" : ""}`}>
-          <span className="stat-label">Current reading</span>
+          <span className="stat-label">Latest reading</span>
           <span className="stat-value stat-big">{fmtNum(last?.v, 1, "°C")}</span>
-          <span className="muted small">{last ? fmtTime(last.ts) : "no data"}</span>
+          <span className="muted small">{last ? when(last.ts) : "no data"}</span>
         </div>
         <div className="stat">
           <span className="stat-label">Process average (CL)</span>
@@ -180,11 +196,11 @@ export default function Control({ ctx }) {
       {source === "current" && (
         <p className="muted small">
           The current backend format stores one temperature per device, timed when the server received it. Readings sent late after a network drop are plotted at the wrong time.
-          {backend.truncated && " Only the newest 5000 readings of the last 12 h are used."}
+          {backend.truncated && ` Only the newest 5000 readings are used (since ${fmtDateTime(backend.oldest)}).`}
         </p>
       )}
       <section className="card">
-        <ControlChart points={cc.points} limits={cc.limits} spec={cc.spec} events={cc.events} from={now - rangeS} to={now} />
+        <ControlChart points={cc.points} limits={cc.limits} spec={cc.spec} events={cc.events} from={chartFrom} to={chartTo} />
       </section>
 
       <div className="two-col">
@@ -198,7 +214,7 @@ export default function Control({ ctx }) {
                   <span>
                     <strong>{e.title}</strong>
                     <span className="muted small">
-                      {fmtTime(e.ts)} · {e.rule === "trend" || e.rule === "shift" ? e.detail : `${e.v.toFixed(1)}°C · ${e.detail}`}
+                      {when(e.ts)} · {e.rule === "trend" || e.rule === "shift" ? e.detail : `${e.v.toFixed(1)}°C · ${e.detail}`}
                     </span>
                   </span>
                 </li>

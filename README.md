@@ -46,7 +46,7 @@ temperature comes from the sensor of the unit it is in.
 | **Batches** | Shared list pattern: search, Status / Where / Flight filters as removable chips, saved views, sortable columns, row side panel, select rows → Export |
 | **Storage** | Trolleys, trucks and cold rooms: summary stats, unit table (columns chosen in **Customize view**), side panel with unit / sensor / period pickers and category tabs |
 | **Flights** | Departures with Ready / Not ready / Preparing and a checklist per flight |
-| **Control chart** | Temperature control chart per location and sensor, from the **live backend** (current format: one sensor per device, last 12 h of `/api/readings`) or the **best case** simulated data: readings with the centre line (CL), control limits (UCL / LCL, calculated from the sensor's data) and specification limits (USL / LSL, the fixed safety limits). Flags readings outside the limits, 6 rising or falling readings in a row (trend) and 8 on one side of CL (shift), with an alert history and a table of all sensors |
+| **Control chart** | Temperature control chart per location and sensor, from the **live backend** (current format: one sensor per device, from `/api/readings`; opens on **All time** since live data is sparse) or the **best case** simulated data: readings with the centre line (CL), control limits (UCL / LCL, calculated from the sensor's data) and specification limits (USL / LSL, the fixed safety limits). Flags readings outside the limits, 6 rising or falling readings in a row (trend) and 8 on one side of CL (shift), with an alert history and a table of all sensors |
 | **Devices** | Sensor box health: signal (bars + words, **?** explains dBm), power ("Plugged in" / "On battery"), memory card, firmware, missing messages |
 | **Sensor readings** | What the sensor units send, in two versions: **Current backend format** (device, temperature, humidity, live from the backend API, or simulated in the same shape when it isn't running) and **Best case** (the full JSON message the dashboard was designed for, each one viewable as JSON), plus a field-by-field comparison |
 | **Reports** | **Download report (PDF)** and **Export Excel** (summary, units, alerts, batches, flights, readings, door events, device health) |
@@ -82,7 +82,7 @@ offline answers until the FastAPI backend provides `/api/chat`.
 ## Control chart limits (`src/lib/spc.js`)
 
 USL and LSL are the fixed safety limits in `src/config.js`. UCL, CL and LCL are calculated from the
-last 12 h of each sensor's readings (one per chosen interval). Until the QA team provides its formula they use the
+last 12 h of each sensor's readings (one per chosen interval), or from all of them when the period is **All time**. Until the QA team provides its formula they use the
 standard individuals (I-MR) chart: CL = mean, UCL/LCL = CL ± 3 × MR̄ / 1.128, where MR̄ is the average difference
 between consecutive readings. To use another formula, change `controlLimits()` only.
 

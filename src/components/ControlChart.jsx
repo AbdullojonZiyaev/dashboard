@@ -99,7 +99,7 @@ export default function ControlChart({ points, limits, spec, events, from, to, h
         <ResponsiveContainer width="100%" height={height}>
           <LineChart data={points} margin={MARGIN}>
             <CartesianGrid stroke="var(--border)" vertical={false} />
-            <XAxis dataKey="ts" type="number" domain={[from, to]} allowDataOverflow tickFormatter={fmtTime} tick={{ fill: "var(--text-2)", fontSize: 12 }} stroke="var(--border)" height={X_AXIS_H} />
+            <XAxis dataKey="ts" type="number" domain={[from, to]} allowDataOverflow tickFormatter={to - from > 20 * 3600 ? fmtDateTime : fmtTime} tick={{ fill: "var(--text-2)", fontSize: 12 }} stroke="var(--border)" height={X_AXIS_H} />
             <YAxis domain={[lo, hi]} allowDataOverflow tick={{ fill: "var(--text-2)", fontSize: 12 }} stroke="var(--border)" unit="°" />
             {/* Zones: outside the spec limits is unsafe; between the control limits is normal */}
             <ReferenceArea y1={spec.usl} y2={hi} fill="var(--bad-tint)" fillOpacity={1} stroke="none" ifOverflow="hidden" />
