@@ -92,18 +92,18 @@ The **Sensor readings** page reads the backend API (`../backend`) through the de
 forwarded to `http://127.0.0.1:8000` (set `BACKEND_URL` to change it). Start the backend with
 `docker compose up` in `system/backend`, then `npm run dev` here.
 
-### On the server (nginx)
+### On the server (Docker)
 
-The server serves the built files with nginx (`compose.yaml` + `nginx.conf` in this folder). nginx forwards
-`/backend/*` to the API container (`http://api:8000`) over the shared Docker network `catering`, read-only
-(GET only), so the same build works locally and on the server.
+`Dockerfile` builds the dashboard (runs the tests, then `npm run build`) and serves the result with nginx
+(`nginx.conf`). No `dist/` folder is needed on the server. nginx forwards `/backend/*` to the API container
+(`http://api:8000`) over the shared Docker network `catering`, read-only (GET only), so the same build works
+locally and on the server.
 
 ```bash
 # backend first: it creates the "catering" network
 cd backend && docker compose up -d --build
-# dashboard: build, copy dist/ + compose.yaml + nginx.conf to the server, then
-npm run build
-docker compose up -d
+# dashboard: clone this repo on the server once, then for every update
+git pull && docker compose up -d --build
 curl -s localhost/backend/health      # should print {"status":"ok","database":"connected"}
 ```
 
