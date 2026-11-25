@@ -3,6 +3,7 @@ import { sensorLabel } from "../lib/alerts.js";
 import { STATUS } from "../lib/describe.js";
 import { fmtDateTime, fmtNum, fmtSpan, fmtTime } from "../lib/format.js";
 import { setParams } from "../lib/router.js";
+import { BACKEND, BACKEND_SENSOR, useBackendHistory } from "../lib/backend.js";
 import { SAMPLE_OPTIONS, SPC, controlChart } from "../lib/spc.js";
 import { Code, StatusBadge, StatusIcon } from "../components/Badges.jsx";
 import ControlChart from "../components/ControlChart.jsx";
@@ -13,27 +14,92 @@ import { EmptyState, Segmented, Skeleton } from "../components/UI.jsx";
 const RANK = { critical: 0, warning: 1, offline: 2, ok: 3 };
 const sensorsOf = (d) => Object.keys(d.sensors).filter((id) => d.history.some((p) => p[`t:${id}`] !== undefined));
 
-// Temperature control chart per location and sensor (requested by the QA team)
+const SOURCES = [
+  ["current", "Current backend (live)"],
+  ["best", "Best case (simulated)"],
+];
+
+// Units and sensors to chart, from either source, in one shape:
+// { id, name, device: { history }, sensors: [{ id, label, code }] }
+function simulatedUnits(ctx) {
+  return ctx.deviceList.map((d) => ({ id: d.id, name: deviceInfo(d.id).name, device: d, sensors: sensorsOf(d).map((sid) => ({ id: sid, label: sensorLabel(d, sid), code: sid })) }));
+}
+function backendUnits(devices) {
+  return devices.map((d) => ({ id: d.id, name: d.id, device: d, sensors: [{ id: BACKEND_SENSOR, label: "Sensor", code: null }] }));
+}
+
+// Temperature control chart per location and sensor (requested by the QA team).
+// Data from the live backend (current format) or the simulated full messages (best case).
 export default function Control({ ctx }) {
-  const { route, now, deviceList } = ctx;
-  if (!ctx.ready) return <Skeleton tiles={4} rows={8} />;
+  const { route } = ctx;
   const p = route.params;
+  const source = p.src === "best" ? "best" : "current";
+  const backend = useBackendHistory(source === "current", SPC.baselineS);
   const set = (patch) => setParams(route, patch);
   const rangeS = Number(p.range) || RANGES[0].s;
   const sampleS = Number(p.every) || SAMPLE_OPTIONS[1].s;
+  // The backend stamps readings with the real time; the simulation has its own clock
+  const now = source === "current" ? Date.now() / 1000 : ctx.now;
 
-  // Every sensor at every location, with its chart worked out
-  const all = deviceList.flatMap((d) => sensorsOf(d).map((sid) => ({ d, sid, key: `${d.id}|${sid}`, cc: controlChart(d, sid, now, rangeS, sampleS) })));
-  if (!all.length) return <EmptyState>No sensor has sent temperature readings yet.</EmptyState>;
+  const sourcePicker = (
+    <div className="picker">
+      <span className="picker-label">Data</span>
+      <Segmented label="Data source" options={SOURCES} value={source} onChange={(v) => set({ src: v === "current" ? null : v, unit: null, sensor: null })} />
+    </div>
+  );
+  const head = (sub) => (
+    <div className="page-head">
+      <div>
+        <h1>Temperature control chart</h1>
+        {sub}
+      </div>
+    </div>
+  );
+
+  if (source === "current" && backend.status !== "live") {
+    return (
+      <div className="page control">
+        {head(null)}
+        <div className="detail-pickers">{sourcePicker}</div>
+        {backend.status === "checking" ? (
+          <Skeleton tiles={4} rows={6} />
+        ) : (
+          <div className="notice notice-warning">
+            <StatusIcon status="warning" />
+            <span>
+              <strong>Can't reach the backend</strong> at <Code>{BACKEND}</Code> ({backend.error}). Start it, or switch to <strong>Best case</strong> to see the chart with simulated data. This page checks again every 10 s.
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  }
+  if (source === "best" && !ctx.ready) return <Skeleton tiles={4} rows={8} />;
+
+  const units = source === "current" ? backendUnits(backend.devices) : simulatedUnits(ctx);
+  const all = units.flatMap((u) => u.sensors.map((sn) => ({ u, sn, key: `${u.id}|${sn.id}`, cc: controlChart(u.device, sn.id, now, rangeS, sampleS) })));
+  if (!all.length) {
+    return (
+      <div className="page control">
+        {head(null)}
+        <div className="detail-pickers">{sourcePicker}</div>
+        <EmptyState>
+          {source === "current"
+            ? "The backend is running but has no readings from the last 12 hours. Readings appear here as soon as a sensor posts to /api/readings."
+            : "No sensor has sent temperature readings yet."}
+        </EmptyState>
+      </div>
+    );
+  }
   const worst = all.slice().sort((a, b) => RANK[a.cc.status] - RANK[b.cc.status])[0];
-  const sel = all.find((x) => x.d.id === p.unit && x.sid === p.sensor) ?? all.find((x) => x.d.id === p.unit) ?? worst;
-  const { d, sid, cc } = sel;
+  const sel = all.find((x) => x.u.id === p.unit && x.sn.id === p.sensor) ?? all.find((x) => x.u.id === p.unit) ?? worst;
+  const { u, sn, cc } = sel;
   const last = cc.points[cc.points.length - 1];
   const status = STATUS[cc.status];
 
   const columns = [
-    { key: "loc", label: "Location", render: (x) => deviceInfo(x.d.id).name, sort: (x) => deviceInfo(x.d.id).name },
-    { key: "sensor", label: "Sensor", render: (x) => <span>{sensorLabel(x.d, x.sid)} <span className="muted small">{x.sid}</span></span> },
+    { key: "loc", label: "Location", render: (x) => x.u.name, sort: (x) => x.u.name },
+    { key: "sensor", label: "Sensor", render: (x) => <span>{x.sn.label} {x.sn.code && <span className="muted small">{x.sn.code}</span>}</span> },
     { key: "now", label: "Now", align: "right", render: (x) => fmtNum(x.cc.points.at(-1)?.v, 1, " °C"), sort: (x) => x.cc.points.at(-1)?.v },
     { key: "cl", label: "CL", align: "right", render: (x) => fmtNum(x.cc.limits?.cl, 2, " °C"), sort: (x) => x.cc.limits?.cl },
     { key: "lim", label: "LCL – UCL", align: "right", render: (x) => (x.cc.limits ? `${x.cc.limits.lcl.toFixed(2)} – ${x.cc.limits.ucl.toFixed(2)} °C` : "–") },
@@ -47,29 +113,31 @@ export default function Control({ ctx }) {
         <div>
           <h1>Temperature control chart</h1>
           <p className="muted">
-            {deviceInfo(d.id).name} · {sensorLabel(d, sid)} <Code>{sid}</Code>
+            {u.name} · {sn.label} {sn.code && <Code>{sn.code}</Code>} · {source === "current" ? "live from the backend" : "simulated full-format data"}
           </p>
         </div>
         <StatusBadge status={status} size="lg" />
       </div>
 
       <div className="detail-pickers">
+        {sourcePicker}
         <label className="picker">
           <span className="picker-label">Location</span>
-          <select value={d.id} onChange={(e) => set({ unit: e.target.value, sensor: null })}>
-            {deviceList.map((x) => (
+          <select value={u.id} onChange={(e) => set({ unit: e.target.value, sensor: null })}>
+            {units.map((x) => (
               <option key={x.id} value={x.id}>
-                {deviceInfo(x.id).name}
+                {x.name}
               </option>
             ))}
           </select>
         </label>
         <label className="picker">
           <span className="picker-label">Sensor</span>
-          <select value={sid} onChange={(e) => set({ unit: d.id, sensor: e.target.value })}>
-            {sensorsOf(d).map((id) => (
-              <option key={id} value={id}>
-                {sensorLabel(d, id)} · {id}
+          <select value={sn.id} onChange={(e) => set({ unit: u.id, sensor: e.target.value })} disabled={u.sensors.length < 2}>
+            {u.sensors.map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.label}
+                {x.code ? ` · ${x.code}` : ""}
               </option>
             ))}
           </select>
@@ -109,6 +177,12 @@ export default function Control({ ctx }) {
         </div>
       </div>
 
+      {source === "current" && (
+        <p className="muted small">
+          The current backend format stores one temperature per device, timed when the server received it. Readings sent late after a network drop are plotted at the wrong time.
+          {backend.truncated && " Only the newest 5000 readings of the last 12 h are used."}
+        </p>
+      )}
       <section className="card">
         <ControlChart points={cc.points} limits={cc.limits} spec={cc.spec} events={cc.events} from={now - rangeS} to={now} />
       </section>
@@ -178,7 +252,7 @@ export default function Control({ ctx }) {
           rows={all}
           rowKey={(x) => x.key}
           activeKey={sel.key}
-          onOpen={(x) => set({ unit: x.d.id, sensor: x.sid })}
+          onOpen={(x) => set({ unit: x.u.id, sensor: x.sn.id })}
           defaultSort={{ key: "status", dir: "asc" }}
           rowClass={(x) => `row-${x.cc.status}`}
         />
