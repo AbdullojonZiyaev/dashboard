@@ -24,8 +24,11 @@ import Storage from "./pages/Storage.jsx";
 import Flights from "./pages/Flights.jsx";
 import Reports from "./pages/Reports.jsx";
 import Settings from "./pages/Settings.jsx";
+import Control from "./pages/Control.jsx";
+import Readings from "./pages/Readings.jsx";
 
-const PAGES = { home: Home, alerts: Alerts, find: Find, batches: Batches, storage: Storage, devices: Storage, flights: Flights, reports: Reports, settings: Settings };
+const PAGES = { home: Home, alerts: Alerts, find: Find, batches: Batches, storage: Storage, devices: Storage, flights: Flights, control: Control, readings: Readings, reports: Reports, settings: Settings };
+const RAW_KEEP = 400;
 const isTyping = () => /INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName ?? "");
 const TOUR = [
   { page: "home", title: "This is where problems show up", text: "The banner at the top lists what needs attention, with a button to act on each one. When everything is fine it shrinks to one green line." },
@@ -43,6 +46,7 @@ const SHORTCUTS = [
 
 export default function App() {
   const feedRef = useRef(null);
+  const rawRef = useRef({ n: 0, list: [] }); // latest raw messages, for the Sensor readings page
   if (!feedRef.current) feedRef.current = createFeed();
   const feed = feedRef.current;
   const [plan] = useState(() => createMealPlan(Math.floor(feed.now())));
@@ -71,7 +75,12 @@ export default function App() {
   const wall = route.page === "wall";
 
   useEffect(() => {
-    const stop = feed.start((msgs) => dispatch({ type: "messages", msgs }), setConnection);
+    const stop = feed.start((msgs) => {
+      const at = feed.now();
+      const raw = rawRef.current;
+      raw.list = [...raw.list, ...msgs.filter((m) => m && typeof m === "object").map((msg) => ({ n: raw.n++, msg, at }))].slice(-RAW_KEEP);
+      dispatch({ type: "messages", msgs });
+    }, setConnection);
     const clock = setInterval(() => setNow(feed.now()), 1000);
     return () => {
       stop();
@@ -234,6 +243,7 @@ export default function App() {
     plan,
     picture,
     devices: state.devices,
+    rawMessages: rawRef.current.list,
     deviceList,
     deviceAlerts,
     alerts: shownAlerts,

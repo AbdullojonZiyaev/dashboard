@@ -2395,3 +2395,103 @@ kbd {
     transition: none !important;
   }
 }
+
+/* ---------- Control chart ---------- */
+.stat-big {
+  font-size: 26px;
+}
+.stat-warn .stat-value {
+  color: var(--warn-text);
+}
+.cchart .recharts-reference-line-line {
+  shape-rendering: crispEdges;
+}
+.key-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.key-line {
+  width: 18px;
+  height: 3px;
+  border-radius: 2px;
+}
+.key-dash {
+  background: repeating-linear-gradient(90deg, currentColor 0 5px, transparent 5px 8px);
+}
+.event-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.event-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+.event-list li:first-child {
+  border-top: none;
+}
+.event-list li > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.facts-tight {
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.card-head.padded {
+  padding: 16px 16px 0;
+}
+
+/* ---------- Sensor readings ---------- */
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-left: 5px solid var(--none);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+.notice-ok {
+  border-left-color: var(--ok);
+}
+.notice-warning {
+  border-left-color: var(--warn);
+}
+.cmp-yes {
+  color: var(--ok-text);
+  font-weight: 600;
+}
+.cmp-no {
+  color: var(--bad-text);
+  font-weight: 600;
+}
+.cmp-part {
+  color: var(--warn-text);
+  font-weight: 600;
+}
+.json {
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--subtle);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  white-space: pre;
+}
+.mono {
+  font-family: var(--mono);
+  font-size: 12.5px;
+}

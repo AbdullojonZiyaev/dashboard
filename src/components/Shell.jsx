@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, Cpu, FileText, House, MessageCircle, Package, Plane, ScanLine, Search, Settings, Warehouse } from "lucide-react";
+import { Activity, Bell, Cpu, FileText, House, MessageCircle, Package, Plane, Radio, ScanLine, Search, Settings, Warehouse } from "lucide-react";
 import { deviceInfo } from "../data/registry.js";
 import { Code, StatusIcon } from "./Badges.jsx";
 
-// Side navigation: at most 9 items, icon + word (DESIGN.md §4.1, §4.2)
+// Side navigation, icon + word (DESIGN.md §4.1, §4.2). DESIGN.md asks for at most 9;
+// Control chart and Sensor readings were added on request, making 11.
 export const NAV = [
   { page: "home", label: "Home", icon: House },
   { page: "alerts", label: "Alerts", icon: Bell, phone: true },
@@ -11,7 +12,9 @@ export const NAV = [
   { page: "batches", label: "Batches", icon: Package },
   { page: "storage", label: "Storage", icon: Warehouse },
   { page: "flights", label: "Flights", icon: Plane },
+  { page: "control", label: "Control chart", icon: Activity },
   { page: "devices", label: "Devices", icon: Cpu },
+  { page: "readings", label: "Sensor readings", icon: Radio },
   { page: "reports", label: "Reports", icon: FileText },
   { page: "settings", label: "Settings", icon: Settings },
 ];

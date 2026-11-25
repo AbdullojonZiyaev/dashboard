@@ -1,0 +1,23 @@
+# Serves the built dashboard (npm run build → dist/) with nginx on port 80.
+# Joins the backend's "catering" network so /backend/* can reach the API container.
+# Start the backend first: it creates that network.
+services:
+  dashboard:
+    image: nginx:stable-alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./dist:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - catering
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+networks:
+  catering:
+    external: true

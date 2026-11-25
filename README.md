@@ -46,7 +46,9 @@ temperature comes from the sensor of the unit it is in.
 | **Batches** | Shared list pattern: search, Status / Where / Flight filters as removable chips, saved views, sortable columns, row side panel, select rows → Export |
 | **Storage** | Trolleys, trucks and cold rooms: summary stats, unit table (columns chosen in **Customize view**), side panel with unit / sensor / period pickers and category tabs |
 | **Flights** | Departures with Ready / Not ready / Preparing and a checklist per flight |
+| **Control chart** | Temperature control chart per location and sensor: readings with the centre line (CL), control limits (UCL / LCL, calculated from the sensor's data) and specification limits (USL / LSL, the fixed safety limits). Flags readings outside the limits, 6 rising or falling readings in a row (trend) and 8 on one side of CL (shift), with an alert history and a table of all sensors |
 | **Devices** | Sensor box health: signal (bars + words, **?** explains dBm), power ("Plugged in" / "On battery"), memory card, firmware, missing messages |
+| **Sensor readings** | What the sensor units send, in two versions: **Current backend format** (device, temperature, humidity, live from the backend API, or simulated in the same shape when it isn't running) and **Best case** (the full JSON message the dashboard was designed for, each one viewable as JSON), plus a field-by-field comparison |
 | **Reports** | **Download report (PDF)** and **Export Excel** (summary, units, alerts, batches, flights, readings, door events, device health) |
 | **Settings** | Theme (light default, dark, match device), comfortable / compact rows, large text for tablets, what the dashboard shows, tour, wall screen |
 
@@ -77,9 +79,37 @@ temperatures, doors, batteries, signal and any unit by name. The panel header sh
 The endpoint only exists in `npm run dev` and `npm run preview`; a static build on another web server uses the
 offline answers until the FastAPI backend provides `/api/chat`.
 
+## Control chart limits (`src/lib/spc.js`)
+
+USL and LSL are the fixed safety limits in `src/config.js`. UCL, CL and LCL are calculated from the
+last 12 h of each sensor's readings (one per chosen interval). Until the QA team provides its formula they use the
+standard individuals (I-MR) chart: CL = mean, UCL/LCL = CL ± 3 × MR̄ / 1.128, where MR̄ is the average difference
+between consecutive readings. To use another formula, change `controlLimits()` only.
+
 ## Connect it to the backend
 
-Copy `.env.example` to `.env` and set the FastAPI WebSocket endpoint:
+The **Sensor readings** page reads the backend API (`../backend`) through the dev server: `/backend/*` is
+forwarded to `http://127.0.0.1:8000` (set `BACKEND_URL` to change it). Start the backend with
+`docker compose up` in `system/backend`, then `npm run dev` here.
+
+### On the server (nginx)
+
+The server serves the built files with nginx (`compose.yaml` + `nginx.conf` in this folder). nginx forwards
+`/backend/*` to the API container (`http://api:8000`) over the shared Docker network `catering`, read-only
+(GET only), so the same build works locally and on the server.
+
+```bash
+# backend first: it creates the "catering" network
+cd backend && docker compose up -d --build
+# dashboard: build, copy dist/ + compose.yaml + nginx.conf to the server, then
+npm run build
+docker compose up -d
+curl -s localhost/backend/health      # should print {"status":"ok","database":"connected"}
+```
+
+The chatbot's `/api/chat` endpoint doesn't exist on nginx, so the assistant uses its offline answers there.
+
+For the live feed of the other screens, set the WebSocket endpoint in `.env`:
 
 ```
 VITE_WS_URL=ws://localhost:8000/ws/telemetry
@@ -147,6 +177,8 @@ src/
     format.js            time and number formatting
     describe.js          status, signal (dBm) and power in plain words
     stats.js             min / avg / max, time in range, excursions
+    spc.js               control chart limits and rules (UCL / CL / LCL, trend, shift)
+    backend.js           reads readings and devices from the backend API
     view.js              Customize view options
     router.js            hash routes (#/page/arg?filters) so Back keeps filters
     prefs.js             theme, density, handled alerts, recent meals (browser storage)
@@ -156,7 +188,9 @@ src/
     lib.test.js          unit tests
   components/            Shell (top bar, nav, search), DataTable, TempChart, BatchView, UnitDetail,
                          UI (side panel, menu, tiles, toasts), Badges, CustomizeView, ChatPanel
-  pages/                 Home, Alerts, Find, Batches, Storage (also Devices), Flights, Reports, Settings
+  components/ControlChart.jsx  the control chart
+  pages/                 Home, Alerts, Find, Batches, Storage (also Devices), Flights, Control, Readings,
+                         Reports, Settings
 server/
   chatPlugin.js          POST /api/chat → Claude (dev and preview servers)
 ```
